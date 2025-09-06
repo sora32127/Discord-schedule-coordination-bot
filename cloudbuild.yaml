@@ -1,0 +1,65 @@
+# Cloud Build: build and deploy Cloud Run service
+# Substitutions to configure in trigger or gcloud:
+#   _REGION=asia-northeast1
+#   _SERVICE=discord-scheduler
+#   _AR_REPO=discord-scheduler
+#   _AR_HOST=asia-northeast1-docker.pkg.dev
+#   _DISCORD_CHANNEL_ID=123456789012345678
+#   _DISCORD_GUILD_ID=
+#   _WEEKDAY_OPTIONS=月,火,水,木,金
+#   _POLL_DURATION_HOURS=168
+#   _DISCORD_BOT_TOKEN_SECRET_NAME=discord-bot-token
+#   (CRON secret no longer used)
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+substitutions:
+  _REGION: asia-northeast1
+  _SERVICE: discord-scheduler
+  _AR_REPO: discord-scheduler
+  _AR_HOST: asia-northeast1-docker.pkg.dev
+  _DISCORD_CHANNEL_ID: ""
+  _DISCORD_GUILD_ID: ""
+  _WEEKDAY_OPTIONS: 月,火,水,木,金
+  _POLL_DURATION_HOURS: "168"
+  _DISCORD_BOT_TOKEN_SECRET_NAME: discord-bot-token
+  # (No CRON secret)
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    id: Build
+    args:
+      [
+        "build",
+        "-f",
+        "Disorder/Dockerfile",
+        "-t",
+        "${_AR_HOST}/${PROJECT_ID}/${_AR_REPO}/${_SERVICE}:${COMMIT_SHA}",
+        "Disorder",
+      ]
+
+  - name: gcr.io/cloud-builders/docker
+    id: Push
+    args: ["push", "${_AR_HOST}/${PROJECT_ID}/${_AR_REPO}/${_SERVICE}:${COMMIT_SHA}"]
+
+  - name: gcr.io/cloud-builders/gcloud
+    id: Deploy to Cloud Run
+    args:
+      [
+        "run",
+        "deploy",
+        "${_SERVICE}",
+        "--image=${_AR_HOST}/${PROJECT_ID}/${_AR_REPO}/${_SERVICE}:${COMMIT_SHA}",
+        "--region=${_REGION}",
+        "--platform=managed",
+        "--allow-unauthenticated=false",
+        "--service-account=${_SERVICE}-sa@${PROJECT_ID}.iam.gserviceaccount.com",
+        "--set-env-vars",
+        "DISCORD_CHANNEL_ID=${_DISCORD_CHANNEL_ID},DISCORD_GUILD_ID=${_DISCORD_GUILD_ID},WEEKDAY_OPTIONS=${_WEEKDAY_OPTIONS},POLL_DURATION_HOURS=${_POLL_DURATION_HOURS}",
+        "--set-secrets",
+        "DISCORD_BOT_TOKEN=${_DISCORD_BOT_TOKEN_SECRET_NAME}:latest",
+      ]
+
+images:
+  - "${_AR_HOST}/${PROJECT_ID}/${_AR_REPO}/${_SERVICE}:${COMMIT_SHA}"
