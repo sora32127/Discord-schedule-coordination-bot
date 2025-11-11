@@ -13,13 +13,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - name: Setup Python via uv and install deps
+        run: |
+          uv python install 3.11
+          uv pip install -r requirements.txt
 
       - name: Run weekly scheduler
         env:
@@ -28,6 +30,6 @@ jobs:
           WEEKDAY_OPTIONS: "月,火,水,木,金"
           POLL_DURATION_HOURS: "24"
           WEEKLY_MESSAGE: "こんにちは、今週の日程調整です。イケる日を回答してください！"
-        run: python scripts/schedule_weekly.py
+        run: uv run python scripts/schedule_weekly.py
 
 
