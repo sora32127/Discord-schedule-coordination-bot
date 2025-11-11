@@ -1,6 +1,6 @@
 import os
 from typing import List, Optional
-import httpx
+import requests
 from dotenv import load_dotenv
 
 
@@ -23,11 +23,7 @@ def weekday_options_from_env(override: Optional[List[str]] = None) -> List[str]:
     if override:
         return override
     # Prefer WEEKDAY_OPTIONS if provided, fall back to legacy WEEKDAY_EMOJI_NAMES, else sensible JP defaults
-    raw = (
-        os.getenv("WEEKDAY_OPTIONS")
-        or os.getenv("WEEKDAY_EMOJI_NAMES")
-        or "月,火,水,木,金"
-    )
+    raw = ("月,火,水,木,金")
     return [x.strip() for x in raw.split(",") if x.strip()]
 
 
@@ -39,7 +35,7 @@ def build_auth_headers(token: str) -> dict:
     }
 
 
-async def send_poll_message(
+def send_poll_message(
     channel_id: str,
     message: str,
     options: List[str],
@@ -61,8 +57,8 @@ async def send_poll_message(
         "layout_type": 1,
     }
 
-    async with httpx.AsyncClient() as client:
-        post_url = f"{DISCORD_API_BASE}/channels/{channel_id}/messages"
-        payload = {"content": message, "poll": poll}
-        resp = await client.post(post_url, headers=headers, json=payload, timeout=15)
-        resp.raise_for_status()
+    post_url = f"{DISCORD_API_BASE}/channels/{channel_id}/messages"
+    payload = {"content": message, "poll": poll}
+    print(payload)
+    resp = requests.post(post_url, headers=headers, json=payload, timeout=15)
+    resp.raise_for_status()
