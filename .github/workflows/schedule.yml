@@ -1,0 +1,33 @@
+name: Weekly Discord Scheduler
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 10:00 JST every Monday = 01:00 UTC Monday
+    - cron: "0 1 * * 1"
+
+jobs:
+  run-weekly:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run weekly scheduler
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_CHANNEL_ID: "1413686217555578940"
+          WEEKDAY_OPTIONS: "月,火,水,木,金"
+          POLL_DURATION_HOURS: "24"
+          WEEKLY_MESSAGE: "こんにちは、今週の日程調整です。イケる日を回答してください！"
+        run: python scripts/schedule_weekly.py
+
+
