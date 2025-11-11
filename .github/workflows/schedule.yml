@@ -27,7 +27,7 @@ jobs:
       - name: Run weekly scheduler
         env:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
-          DISCORD_CHANNEL_ID: "1413686217555578940"
+          DISCORD_CHANNEL_ID: ${{ secrets.DISCORD_CHANNEL_ID }}
           WEEKDAY_OPTIONS: "月,火,水,木,金"
         run: uv run python app/schedule_weekly.py
 
