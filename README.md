@@ -1,108 +1,118 @@
-# Discord 日程調整 Bot (Cloud Run)
+# Discord 日程調整 Bot
 
-このリポジトリは、毎週月曜日 10:00 に指定チャンネルへ日程調整メッセージを送信し、「Poll（投票）」で選択肢を提示する Discord Bot です（複数選択可）。Cloud Run での実行を想定し、HTTP 経由で外部スケジューラ（Cloud Scheduler）から起動します。
+毎週月曜日 10:00 に Discord の指定チャンネルへ日程調整 Poll を自動送信する Bot です。  
+Gateway（常時接続）は使わず、**Cloud Scheduler → Cloud Run → Discord REST API** の構成で動作します。
 
-## 仕様（specs/spec.md に基づく）
-- 月曜 10:00 にメッセージ送信。
-- 内容: 「こんにちは、今週の日程調整です。イケる日を回答してください！」
-- Poll の選択肢（デフォルト）: 「月, 火, 水, 木, 金」
-- メンバーは投票（複数選択可）で都合を表明します。
-
-## アーキテクチャ概要
-- Bot の常時接続（Gateway）は行いません。Cloud Scheduler → Cloud Run(HTTP) → Discord REST API の呼び出しで実現します。
-- メッセージ送信と同時に Poll を作成します（Discord Poll API）。
-
-## 必要権限（Bot 招待時）
-- Send Messages（メッセージ送信）
-- Create Polls（投票の作成）
-- Read Message History（メッセージ履歴の参照）
-
-## 環境変数
-- `DISCORD_BOT_TOKEN`（必須）: Discord Bot Token。
-- `DISCORD_CHANNEL_ID`（必須）: 送信先チャンネル ID。
-- `DISCORD_GUILD_ID`（任意）: 旧仕様互換のため残置（Poll では未使用）。
-- `WEEKDAY_OPTIONS`（任意）: Poll の選択肢（カンマ区切り）。デフォルトは `月,火,水,木,金`。
-- `WEEKDAY_EMOJI_NAMES`（任意）: 旧仕様の互換用（指定がある場合は選択肢として扱います）。
-- `POLL_DURATION_HOURS`（任意）: Poll の有効時間（時間）。デフォルト 168（7日）。
-  
-
-## ローカル実行
-1) 依存関係のインストール:
+## アーキテクチャ
 
 ```
+Cloud Scheduler (毎週月曜 10:00)
+        │  HTTP POST
+        ▼
+   Cloud Run
+  (app/schedule_weekly.py)
+        │  Discord REST API
+        ▼
+  Discord チャンネル
+  （Poll 送信・複数選択可）
+```
+
+## 動作概要
+
+- 指定チャンネルに「こんにちは、今週の日程調整です。イケる日を回答してください！」を投稿します。
+- メッセージと同時に Discord Poll を作成し、曜日の選択肢（デフォルト: 月〜金）を提示します。
+- メンバーは投票（複数選択可）で参加可能な日を回答します。
+
+## Bot に必要な権限
+
+| 権限 | 用途 |
+|------|------|
+| Send Messages | メッセージ送信 |
+| Create Polls | Poll 作成 |
+| Read Message History | メッセージ履歴の参照 |
+
+## 環境変数
+
+| 変数名 | 必須 | デフォルト | 説明 |
+|--------|------|-----------|------|
+| `DISCORD_BOT_TOKEN` | ✅ | — | Discord Bot Token |
+| `DISCORD_CHANNEL_ID` | ✅ | — | 送信先チャンネル ID |
+| `WEEKDAY_OPTIONS` | — | `月,火,水,木,金` | Poll の選択肢（カンマ区切り、2〜10 個） |
+| `POLL_DURATION_HOURS` | — | `24` | Poll の有効時間（時間単位） |
+| `DISCORD_GUILD_ID` | — | — | 旧仕様互換のため残置（現在は未使用） |
+
+`.env.example` をコピーして `.env` を作成し、値を設定してください。
+
+```bash
+cp .env.example .env
+# .env を編集して DISCORD_BOT_TOKEN と DISCORD_CHANNEL_ID を設定する
+```
+
+## ローカル実行
+
+```bash
+# 1. 依存関係のインストール
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+
+# 2. スクリプトを直接実行（要: 環境変数の設定）
+python -m app.schedule_weekly
 ```
 
-2) サーバ起動:
+> **注意**: Poll の選択肢は 2〜10 個に収めてください（Discord API の制限）。
 
-```
-uvicorn app.main:app --reload --port 8080
-```
+## Cloud Run へのデプロイ
 
-3) 疎通確認:
+### 推奨: デプロイスクリプトを使う
 
-```
-curl http://localhost:8080/healthz
+```bash
+bash scripts/deploy.sh
 ```
 
-4) 手動トリガー（要: 環境変数設定）:
+スクリプトは以下を自動で行います:
+1. `infra/terraform/terraform.tfvars` または `.env` から設定値を読み込む
+2. Terraform でインフラ（サービスアカウント・Secret Manager など）を構築する
+3. `gcloud run deploy --source .` でソースからイメージをビルドして Cloud Run へデプロイする
 
-```
-curl -X POST \
-  -H "Content-Type: application/json" \
-  -d '{"message": "こんにちは、今週の日程調整です。イケる日を回答してください！", "options": null}' \
-  http://localhost:8080/schedule/weekly
-```
+### 手動デプロイ
 
-## Cloud Run デプロイ例
-1) ソースから直接デプロイ（gcloud run deploy --source 推奨）:
-
-```
+```bash
 gcloud run deploy discord-scheduler \
-  --source=Disorder \
+  --source . \
   --region asia-northeast1 \
-  --allow-unauthenticated=false \
-  --service-account=discord-scheduler-sa@<PROJECT_ID>.iam.gserviceaccount.com \
-  --set-env-vars DISCORD_CHANNEL_ID=***,DISCORD_GUILD_ID=,WEEKDAY_OPTIONS=月,火,水,木,金,POLL_DURATION_HOURS=168 \
+  --no-allow-unauthenticated \
+  --service-account discord-scheduler-sa@<PROJECT_ID>.iam.gserviceaccount.com \
+  --set-env-vars "^~^DISCORD_CHANNEL_ID=<CHANNEL_ID>~WEEKDAY_OPTIONS=月,火,水,木,金~POLL_DURATION_HOURS=24" \
   --set-secrets DISCORD_BOT_TOKEN=discord-bot-token:latest
 ```
 
-2) 画像ビルドしてからデプロイ（オプション）:
+### Cloud Scheduler の設定
 
-```
-gcloud builds submit --tag gcr.io/<PROJECT_ID>/discord-scheduler
+Cloud Scheduler から Cloud Run を毎週月曜 10:00 に呼び出すよう設定します。  
+OIDC トークンを使って認証します（共有シークレット不要）。
 
-gcloud run deploy discord-scheduler \
-  --image gcr.io/<PROJECT_ID>/discord-scheduler \
-  --platform managed \
-  --region asia-northeast1 \
-  --allow-unauthenticated=false \
-  --set-env-vars DISCORD_BOT_TOKEN=***,DISCORD_CHANNEL_ID=***,DISCORD_GUILD_ID=***,WEEKDAY_EMOJI_NAMES=getsuyoubi,kayoubi,suiyoubi,mokuyoubi,kinyoubi
-```
-
-3) Cloud Scheduler の設定（毎週月曜 10:00）:
-- Cron: `0 10 * * 1`
-- ターゲット: HTTP
-- メソッド: POST
-- URL: Cloud Run サービス URL + `/schedule/weekly`
-- ヘッダ: `Content-Type: application/json`
-- ボディ: `{}`（空オブジェクトで可）
-
-OIDC を使った認証で保護します（共有シークレットは不要）。
-
-## 注意点（Poll）
-- Poll の選択肢は 2〜10 個にしてください。
-- `POLL_DURATION_HOURS` で期限を指定できます（既定は 7 日）。
-
-## API エンドポイント
-- `GET /healthz`: ヘルスチェック
-- `POST /schedule/weekly`: 手動トリガー。リクエストボディでメッセージや選択肢を上書き可能。
-  - 例: `{ "message": "...", "options": ["月", "火", ...], "duration_hours": 168 }`
+| 項目 | 値 |
+|------|----|
+| Cron | `0 10 * * 1` |
+| ターゲット | HTTP |
+| メソッド | POST |
+| URL | Cloud Run サービス URL |
+| ヘッダ | `Content-Type: application/json` |
+| ボディ | `{}` |
 
 ## ディレクトリ構成
-- `app/main.py`: FastAPI アプリ本体（Discord REST 呼び出し：Poll 作成）。
-- `requirements.txt`: 依存定義。
-- `Dockerfile`: Cloud Run 用コンテナ。
-- `specs/spec.md`: 仕様書（本件の要件）。
+
+```
+.
+├── app/
+│   ├── main.py              # Discord REST API 呼び出し関数（Poll 送信など）
+│   └── schedule_weekly.py   # エントリーポイント（環境変数を読み込み Poll を送信）
+├── scripts/
+│   └── deploy.sh            # 自動デプロイスクリプト（Terraform + gcloud）
+├── specs/
+│   └── spec.md              # 仕様書
+├── Dockerfile               # Cloud Run 用コンテナ定義
+├── requirements.txt         # Python 依存パッケージ
+└── .env.example             # 環境変数のサンプル
+```
