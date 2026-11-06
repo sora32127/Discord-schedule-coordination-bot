@@ -1,4 +1,4 @@
-import { startButton } from "../worker/index.mjs";
+import { startButton } from "../worker/poll.mjs";
 
 const API = "https://discord.com/api/v10";
 const LAUNCHER = "ボタンを押して、いつでも日程調整を始められます。";
