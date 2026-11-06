@@ -1,27 +1,9 @@
+import { START, WEEKLY_QUESTION, weeklyPollMessage } from "./poll.mjs";
+
+export { PollResults } from "./tally.mjs";
+
 const DISCORD_API = "https://discord.com/api/v10";
-const START = "schedule:start";
 const MAX_INTERACTION_BYTES = 64 * 1024;
-const WEEKLY_QUESTION = "こんにちは、今週の日程調整です。イケる日を回答してください！";
-const WEEKDAYS = ["月", "火", "水", "木", "金"];
-
-export const startButton = [{
-  type: 1,
-  components: [{ type: 2, style: 1, label: "日程調整を始める", custom_id: START }],
-}];
-
-function weeklyPollMessage() {
-  return {
-    content: WEEKLY_QUESTION,
-    poll: {
-      question: { text: WEEKLY_QUESTION },
-      answers: WEEKDAYS.map(text => ({ poll_media: { text } })),
-      duration: 24,
-      allow_multiselect: true,
-    },
-    components: startButton,
-    allowed_mentions: { parse: [] },
-  };
-}
 
 function decodeHex(hex) {
   return Uint8Array.from(hex.match(/../g), pair => Number.parseInt(pair, 16));
@@ -90,6 +72,11 @@ export default {
   },
 
   async scheduled(controller, env) {
+    if (controller.cron === "*/5 * * * *") {
+      await env.POLL_RESULTS.getByName(env.DISCORD_CHANNEL_ID).check(env.DISCORD_CHANNEL_ID, WEEKLY_QUESTION);
+      return;
+    }
+
     const response = await fetch(`${DISCORD_API}/channels/${env.DISCORD_CHANNEL_ID}/messages`, {
       method: "POST",
       headers: {
